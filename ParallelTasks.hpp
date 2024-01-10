@@ -17,48 +17,50 @@ public:
 
     ~ParallelTasks();
 
-    void runTasks(ITask *task, int num_tasks); // run tasks without dependency
+    void addTask(ITask *task, int num_jobs); // add tasks without dependency
 
-    TaskID runTasksAsyncWithDeps(ITask *task, int num_tasks, const std::vector<int> &deps); // run tasks with dependencies
+    TaskID addTaskWithDeps(ITask *task, int num_jobs, const std::vector<TaskID> &deps); // add tasks with dependencies
 
-    void sync();
+    void sync();  // execute all tasks/jobs, and current main thread will keep blocking
 
 private:
     void tasksBarrier();
-    void addBatchTasks(ITask *runnable, int num_tasks);
+    void addBatchJobs(TaskID task_id, ITask *itask, int num_jobs);
 
 private:
-    uint32_t global_task_id;                     // assign each task an id (which will be put in `tasks` queue)
     std::atomic_bool stop;                       // current thread pool is stoped, will be set true in dtor
     std::vector<std::thread> workers;            // workers thread pool
-    std::queue<std::function<void()>> tasks_que; // tasks that are not completed
-    std::atomic_uint32_t remained_tasks;         // number of remained tasks that are not exectuted
+    std::queue<std::function<void()>> jobs_que;  // jobs that are not completed
+    std::atomic_uint32_t remained_jobs;          // number of remained jobs that are not exectuted
 
-    /* mutex and cv to protect queue `tasks` */
-    std::mutex mtx_que;
-    std::condition_variable cv_new_task;
+    /* mutex and cv to protect queue `jobs_que` */
+    std::mutex mtx_jobs_que;
+    std::condition_variable cv_new_job;
 
-    /* cv to wait for all tasks are done */
-    std::mutex mtx_all_tasks_done;
-    std::condition_variable cv_all_tasks_done;
+    /* cv to wait for all jobs are done */
+    std::mutex mtx_all_jobs_done;
+    std::condition_variable cv_all_jobs_done;
 
-    /* indeg - record in-degree of vertices in DAG 
-     * tasks_graph - represent the DAG of tasks
+    /* global_task_id: assign each task an id in DAG
+     * indeg: record in-degree of vertices in DAG
+     * tasks_graph: represent the DAG of tasks
      */
-    std::unordered_map<int, int> indeg;
-    std::unordered_map<int, std::unordered_set<int>> tasks_graph;
+    TaskID global_task_id;
+    std::unordered_map<TaskID, int> indeg;
+    std::unordered_map<TaskID, std::unordered_set<TaskID>> tasks_graph;
 
-    /* BatchTasks ready queue (whose indeg is 0) */
+    /* queue of ready tasks (whose indegree are 0), topological sorting on DAG is based on this queue */
     std::queue<TaskID> ready_que;
 
-    /* AsyncTask = (IRunnable *, num_tasks)
-     * tasks_collect = task_id -> AsyncTask
-     */
-    using AsyncTask = std::pair<ITask *, int>;
-    std::unordered_map<int, AsyncTask> tasks_collect;
+    struct TaskMeta
+    {
+        ITask *itask;
+        int num_jobs;
+    };
+    std::unordered_map<TaskID, TaskMeta> tasks_collect; // store the meta data of each task
 };
 
-ParallelTasks::ParallelTasks(const int num_threads) : global_task_id(0), stop(false), workers(num_threads), remained_tasks(0)
+ParallelTasks::ParallelTasks(const int num_threads) : stop(false), workers(num_threads), remained_jobs(0), global_task_id(0)
 {
     auto worker_entry = [this]()
     {
@@ -66,66 +68,66 @@ ParallelTasks::ParallelTasks(const int num_threads) : global_task_id(0), stop(fa
         {
             std::function<void()> task;
             {
-                std::unique_lock lock(mtx_que);
-                cv_new_task.wait(lock, [this]()
-                                 { return stop.load() || !tasks_que.empty(); });
+                std::unique_lock lock(mtx_jobs_que);
+                cv_new_job.wait(lock, [this]()
+                                 { return stop.load() || !jobs_que.empty(); });
 
-                if (stop && tasks_que.empty())
+                if (stop && jobs_que.empty())
                     return;
-                task = std::move(tasks_que.front());
-                tasks_que.pop();
+                task = std::move(jobs_que.front());
+                jobs_que.pop();
             }
             task();
-            --remained_tasks;
-            if (remained_tasks.load() == 0)
-                cv_all_tasks_done.notify_all();
+            --remained_jobs;
+            if (remained_jobs.load() == 0)
+                cv_all_jobs_done.notify_all();
         }
     };
     for (int i = 0; i < num_threads; ++i)
-        workers[i] = std::thread(worker_entry);
+        workers[i] = std::move(std::thread(worker_entry));
 }
 
 ParallelTasks::~ParallelTasks()
 {
     stop = true;
-    cv_new_task.notify_all(); // wake up all threads, and break the while loop
+    cv_new_job.notify_all(); // wake up all threads, and break the while loop
     for (std::thread &th : workers)
         th.join();
 }
 
-void ParallelTasks::runTasks(ITask *task, int num_tasks)
+void ParallelTasks::addTask(ITask *task, int num_jobs)
 {
-    addBatchTasks(task, num_tasks);
-    tasksBarrier();
+    global_task_id += 1;
+    addBatchJobs(global_task_id, task, num_jobs);
 }
 
-void ParallelTasks::addBatchTasks(ITask *task, int num_tasks)
+void ParallelTasks::addBatchJobs(TaskID task_id, ITask *itask, int num_jobs)
 {
-    std::unique_lock<std::mutex> lock(mtx_que);
-    for (int i = 0; i < num_tasks; ++i)
+    std::unique_lock<std::mutex> lock(mtx_jobs_que);
+    for (int i = 0; i < num_jobs; ++i)
     {
-        tasks_que.emplace([=]()
-                      { task->runTask(i, num_tasks); });
-        remained_tasks++;
-        cv_new_task.notify_one();
+        jobs_que.emplace([=]()
+                         { itask->runTask(task_id, i, num_jobs); });
+        remained_jobs++;
+        cv_new_job.notify_one();
     }
 }
 
 void ParallelTasks::tasksBarrier()
 {
-    std::unique_lock lock(mtx_all_tasks_done);
-    cv_all_tasks_done.wait(lock, [this]()
-                           { return remained_tasks.load() == 0; });
+    std::unique_lock lock(mtx_all_jobs_done);
+    cv_all_jobs_done.wait(lock, [this]()
+                           { return remained_jobs.load() == 0; });
 }
 
-TaskID ParallelTasks::runTasksAsyncWithDeps(ITask *task, int num_tasks, const std::vector<int> &deps)
+TaskID ParallelTasks::addTaskWithDeps(ITask *task, int num_jobs, const std::vector<TaskID> &deps)
 {
     // this function is running in single thread
     global_task_id += 1;
     indeg[global_task_id] = deps.size();
-    tasks_collect[global_task_id] = AsyncTask(task, num_tasks);
+    tasks_collect[global_task_id] = TaskMeta{task, num_jobs};
 
-    for (int prev : deps)
+    for (TaskID prev : deps)
         tasks_graph[prev].emplace(global_task_id);
 
     if (deps.empty())
@@ -146,10 +148,10 @@ void ParallelTasks::sync()
         while (!ready_que.empty())
         {
             id = ready_que.front(), ready_que.pop();
-            AsyncTask task = tasks_collect[id];
-            addBatchTasks(task.first, task.second);
+            TaskMeta task = tasks_collect[id];
+            addBatchJobs(id, task.itask, task.num_jobs);
 
-            for (int next : tasks_graph[id])
+            for (TaskID next : tasks_graph[id])
             {
                 /* assert(indeg.count(next)); */
                 indeg[next]--;

@@ -1,14 +1,16 @@
 #pragma once
 #include <vector>
+#include <cstdint>
 
-using TaskID = int;
+using TaskID = uint32_t;
 
 // Interface of Task
+// Each Task has `n` job, and one job will be running on one thread
 class ITask
 {
 public:
-    // task_id: id of current running task, range of [0, num_tasks)
-    // num_tasks: total number of tasks to be executed
-    virtual void runTask(TaskID task_id, int num_tasks) = 0;
+    // job_idx: id of current running task, range of [0, num_jobs)
+    // num_jobs: total number of tasks to be executed
+    virtual void runTask(TaskID task_id, int job_idx, int num_jobs) = 0;
 };
 

@@ -17,9 +17,9 @@ public:
 
     ~ParallelTasks();
 
-    void addTask(ITask *task, int num_jobs); // add tasks without dependency
+    void addTask(ITask *task, int num_jobs); // add task without dependency
 
-    TaskID addTaskWithDeps(ITask *task, int num_jobs, const std::vector<TaskID> &deps); // add tasks with dependencies
+    TaskID addTaskWithDeps(ITask *task, int num_jobs, const std::vector<TaskID> &deps); // add task with dependencies
 
     void sync();  // execute all tasks/jobs, and current main thread will keep blocking
 

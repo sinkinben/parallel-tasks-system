@@ -5,7 +5,7 @@ class MyRunner : public ITask
 public:
     void runTask(TaskID task_id, int i, int n)
     {
-        printf("TaskID = %u (idx = %d, total jobs = %d) MuRunner \n", task_id, i, n);
+        printf("TaskID = %u (idx = %d, total jobs = %d) MyRunner \n", task_id, i, n);
     }
     ~MyRunner() {}
 };

@@ -23,16 +23,21 @@ public:
 class MergingTask : public ITask
 {
 public:
-    using Interval = std::pair<int, int>;
     std::vector<int> &nums_ref;
-    Interval part1, part2;
-    MergingTask(std::vector<int> &nums, Interval p1, Interval p2) : nums_ref(std::ref(nums)), part1(p1), part2(p2)
+    int part_length;
+    MergingTask(std::vector<int> &nums, int plen) : nums_ref(std::ref(nums)), part_length(plen)
     {
     }
-    void runTask(TaskID _task_id, int _i, int _num_tasks)
+    void runTask(TaskID _task_id, int job_idx, int num_jobs)
     {
-        auto [l1, r1] = part1;
-        auto [l2, r2] = part2;
+        int l1 = job_idx * part_length * 2;
+        int r1 = l1 + part_length;
+        int l2 = r1, r2 = r1 + part_length;
+        merge(l1, r1, l2, r2);
+    }
+
+    void merge(int l1, int r1, int l2, int r2)
+    {
         r2 = std::min(r2, (int)nums_ref.size());
         std::vector<int> buffer(r2 - l1);
         int idx = 0, i = l1, j = l2;
@@ -58,7 +63,7 @@ int main()
     constexpr int SIZE = int(1e8);
     std::vector<int> nums(SIZE);
     for (int i = 0; i < SIZE; ++i)
-        nums[i] = random() % 100;
+        nums[i] = random();
 
     // Execute sorting tasks
     constexpr int N = 16;
@@ -70,21 +75,13 @@ int main()
     // Add merging tasks into parallel system
     // The dependency of first level of merging is {sortingTaskId}.
     // The next level merging depends on the previous tasks
-    std::vector<TaskID> cur_deps = {sortingTaskId};
+    std::vector<TaskID> deps = {sortingTaskId};
     for (int part = SIZE / N; part <= SIZE / 2; part *= 2)
     {
-        std::vector<TaskID> next_deps;
-        for (int i = 0; i < SIZE;)
-        {
-            int l1 = i, r1 = i + part;
-            int l2 = r1, r2 = r1 + part;
-            // Note: memory leak here, but never mind (actually we can reduce such code by shared_ptr)
-            ITask *mergingTask = new MergingTask(nums, {l1, r1}, {l2, r2});
-            TaskID id = parallel.addTaskWithDeps(mergingTask, 1, cur_deps);
-            next_deps.emplace_back(id);
-            i = r2;
-        }
-        cur_deps = std::move(next_deps);
+        // Note: memory leak here, please never mind it (we can reduce such code by shared_ptr)
+        MergingTask *mergingTask = new MergingTask(nums, part);
+        TaskID next_dep = parallel.addTaskWithDeps(mergingTask, SIZE / part / 2, deps);
+        deps = {next_dep};
     }
 
     parallel.sync();

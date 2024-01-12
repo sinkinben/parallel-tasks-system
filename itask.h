@@ -9,8 +9,8 @@ using TaskID = uint32_t;
 class ITask
 {
 public:
-    // job_idx: id of current running task, range of [0, num_jobs)
-    // num_jobs: total number of tasks to be executed
+    // job_idx: id of current running job, range of [0, num_jobs)
+    // num_jobs: total number of jobs to be executed
     virtual void runTask(TaskID task_id, int job_idx, int num_jobs) = 0;
 };
 

@@ -10,10 +10,10 @@ public:
     {
     }
 
-    void runTask(TaskID task_id, int i, int num_tasks)
+    void runTask(TaskID task_id, int i, int num_jobs)
     {
         int n = nums_ref.size();
-        int step = n / num_tasks;
+        int step = n / num_jobs;
         int l = step * i;
         int r = std::min(l + step, n);
         std::sort(begin(nums_ref) + l, begin(nums_ref) + r);
@@ -68,19 +68,19 @@ int main()
     // Execute sorting tasks
     constexpr int N = 16;
     ParallelTasks parallel(N);
-    SortingTask sortingTask(nums);
+    SortingTask sorting_task(nums);
 
-    TaskID sortingTaskId = parallel.addTaskWithDeps(&sortingTask, N, {}); // divide 'nums' into N parts, and N threads to sort such parts
+    TaskID sorting_task_id = parallel.addTaskWithDeps(&sorting_task, N, {}); // divide 'nums' into N parts, and N threads to sort such parts
 
     // Add merging tasks into parallel system
-    // The dependency of first level of merging is {sortingTaskId}.
+    // The dependency of first level of merging is {sorting_task_id}.
     // The next level merging depends on the previous tasks
-    std::vector<TaskID> deps = {sortingTaskId};
+    std::vector<TaskID> deps = {sorting_task_id};
     for (int part = SIZE / N; part <= SIZE / 2; part *= 2)
     {
         // Note: memory leak here, please never mind it (we can reduce such code by shared_ptr)
-        MergingTask *mergingTask = new MergingTask(nums, part);
-        TaskID next_dep = parallel.addTaskWithDeps(mergingTask, SIZE / part / 2, deps);
+        MergingTask *merging_task = new MergingTask(nums, part);
+        TaskID next_dep = parallel.addTaskWithDeps(merging_task, SIZE / part / 2, deps);
         deps = {next_dep};
     }
 

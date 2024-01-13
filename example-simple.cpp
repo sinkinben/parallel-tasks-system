@@ -24,11 +24,11 @@ int main()
 {
     ParallelTasks parallel(16);
     MyRunner runner;
-    OtherRunner OtherRunner;
+    OtherRunner other;
     TaskID A = parallel.addTaskWithDeps(&runner, 5, std::vector<TaskID>{});  // Task 'A' in graph, which has 5 jobs
     TaskID B = parallel.addTaskWithDeps(&runner, 4, std::vector<TaskID>{A}); // Task 'B' has 4 jobs
-    parallel.addTaskWithDeps(&OtherRunner, 1, {A, B});                       // Task 'C' has 1 job
-    parallel.addTaskWithDeps(&OtherRunner, 2, std::vector<TaskID>{});        // Isolated task 'D' (a isolated vertex in graph), has 2 jobs
+    parallel.addTaskWithDeps(&other, 1, {A, B});                             // Task 'C' has 1 job
+    parallel.addTaskWithDeps(&other, 2, std::vector<TaskID>{});              // Isolated task 'D' (a isolated vertex in graph), has 2 jobs
     parallel.sync();                                                         // run all tasks
 }
 
